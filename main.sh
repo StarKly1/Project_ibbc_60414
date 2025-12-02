@@ -7,8 +7,8 @@ echo "==========================================================================
 echo
 echo "Please enter a tools_qc environment with FastQC, Fastp and Multiqc before running this script."
 
-# Creates necessary directories
 
+#Creates the necessary directories
 echo "[1/6] Creating folder structure..."
 
 mkdir -p data/raw
@@ -27,12 +27,11 @@ FASTQC_RAW="results/fastqc_raw"
 FASTQC_TRIM="results/fastqc_trimmed"
 QUAR_LOG="${LOG_DIR}/problematic_files.log"
 
-echo "Project structure ready."
+echo "Folder structure ready."
 echo
 
 
-# Asks user to place FASTQ files in the raw data directory and verifies their presence
-
+# Asks user to place raw data files in the "data/raw"
 echo "FASTQ files should be placed in: $RAW_DIR"
 read -p "Have you placed your FASTQ files in data/raw? (y/n): " READY
 READY=${READY:-n}
@@ -43,32 +42,34 @@ if [[ "$READY" != "y" ]]; then
 fi
 
 
-# Additional script - It separates and logs corrupted or unpaired files
-
-echo "[2/6] Running problematic files checks..."
+# Additional script - It separates and logs corrupted or unpaired files to a problematic_files folder
+echo "[2/6] Running problematic files check..."
 echo "Logging to: $QUAR_LOG"
 echo "Problematic Files Log - $(date -Iseconds)" > "$QUAR_LOG"
 echo "---------------------------------------------" >> "$QUAR_LOG"
 
+#shopt -s nullglob    makes sure that it returns an empty list when no files meet the criteria
 shopt -s nullglob
 FASTQ_FILES=("$RAW_DIR"/*.fastq.gz)
 
+#if the list is empty/ has no correctly named files it exits the program and prompts the user to make the needed modifications
 if [[ ${#FASTQ_FILES[@]} -eq 0 ]]; then
     echo "No FASTQ files found in data/raw. Please make sure they are in the correct directory and have the correct file naming convention."
     echo "R1 files should end with '_R1.fastq.gz' and R2 files with '_R2.fastq.gz'."
     exit 1
 fi
 
+
+#Checks if the naming convention of each file is correct and stores them in SAMPLES
 declare -A SAMPLES
 
-# Classify R1 and R2 files
 for file in "${FASTQ_FILES[@]}"; do
     base=$(basename "$file")
 
-    if [[ "$base" =~ (.*)_R1 ]]; then
+    if [[ "$base" =~ (.*)_R1\.fastq\.gz$ ]]; then
         sample="${BASH_REMATCH[1]}"
         SAMPLES["$sample,R1"]="$file"
-    elif [[ "$base" =~ (.*)_R2 ]]; then
+    elif [[ "$base" =~ (.*)_R2\.fastq\.gz$ ]]; then
         sample="${BASH_REMATCH[1]}"
         SAMPLES["$sample,R2"]="$file"
     else
@@ -78,13 +79,18 @@ for file in "${FASTQ_FILES[@]}"; do
     fi
 done
 
-# Evaluate each sample pair
+# Uses the SAMPLES array to check if every sample has a R1 and R2 pair
 for key in "${!SAMPLES[@]}"; do
     IFS=',' read -r sample readtype <<< "$key"
+
+    #it only reads R1 samples to not re check files, otherwise when SAMPLES was for example sampleA.R1
+    #it would check R1 and R2 but then it would redo the checks when SAMPLES moved to sampleA.R2
+    [[ "$readtype" != "R1" ]] && continue
+
     R1="${SAMPLES[$sample,R1]:-}"
     R2="${SAMPLES[$sample,R2]:-}"
 
-    # Unpaired samples
+    #If the sample has no pair it will be moved to the Problematic_files folder
     if [[ -z "$R1" || -z "$R2" ]]; then
         echo "Unpaired sample: $sample"
         [[ -n "$R1" ]] && echo "[Unpaired] $sample → missing R2 → quarantined $R1" >> "$QUAR_LOG" && mv "$R1" "$QUAR_DIR/"
@@ -92,10 +98,12 @@ for key in "${!SAMPLES[@]}"; do
         continue
     fi
 
-    # Check gzip integrity
+    #it's checking the integrity of each *_R1.fastq.gz or *_R2.fastq.gz using gzip -t without decompressing the file
+
     echo -n "Checking integrity of $sample ... "
 
-    if ! zcat "$R1" >/dev/null 2>&1; then
+    #if one of the files is corrupted, it logs which one it is to a .log file and moves both to the problematic_files folder
+    if ! gzip -t "$R1" >/dev/null 2>&1; then
         echo "R1 corrupted"
         echo "[Corrupted] $sample R1 ($R1) → quarantined" >> "$QUAR_LOG"
         mv "$R1" "$QUAR_DIR/"
@@ -103,7 +111,7 @@ for key in "${!SAMPLES[@]}"; do
         continue
     fi
 
-    if ! zcat "$R2" >/dev/null 2>&1; then
+    if ! gzip -t "$R2" >/dev/null 2>&1; then
         echo "R2 corrupted"
         echo "[Corrupted] $sample R2 ($R2) → quarantined" >> "$QUAR_LOG"
         mv "$R1" "$QUAR_DIR/"
@@ -118,10 +126,9 @@ echo "Problematic Files check complete."
 echo
 
 
-# checks if there are still files to process
-
-VALID_R1=(data/raw/*_R1*.fastq.gz)
-VALID_R2=(data/raw/*_R2*.fastq.gz)
+#checks if there are still files in data/raw if there aren't it aborts the script 
+VALID_R1=("$RAW_DIR"/*_R1.fastq.gz)
+VALID_R2=("$RAW_DIR"/*_R2.fastq.gz)
 
 if [[ ${#VALID_R1[@]} -eq 0 || ${#VALID_R2[@]} -eq 0 ]]; then
     echo "ERROR: No valid sample pairs in data/raw."
@@ -132,8 +139,7 @@ echo "[3/6] Valid FASTQ files detected."
 echo
 
 
-# User input for fastp
-
+#Prompt fot users to change the parameters of  fastp
 echo "[4/6] FASTP configuration"
 
 read -p "Number of threads [4]: " THREADS; THREADS=${THREADS:-4}
@@ -155,21 +161,23 @@ echo
 # Main pipeline 
 
 echo "[5/6] Running main pipeline..."
-MASTER_LOG="logs/pipeline_$(date +%Y%m%d_%H%M).log"
+
+#creats a main .log file for the process
+MASTER_LOG="logs/pipeline_$(date +%Y%m%d_%H%M%S).log"
 echo "Pipeline Start: $(date -Iseconds)" > "$MASTER_LOG"
 
 for R1 in "${VALID_R1[@]}"; do
     sample=$(basename "$R1" | sed -E 's/_R1.*//')
-    R2="data/raw/${sample}_R2.fastq.gz"
+    R2="${RAW_DIR}/${sample}_R2.fastq.gz"
 
     echo "Processing $sample" | tee -a "$MASTER_LOG"
 
     SAMPLE_LOG="logs/${sample}.log"
 
-    # FastQC raw
+    # applies fastqc to the raw data the 2<&1 makes sure that erros and warnings are sent to the log file
     fastqc -t "$THREADS" -o "$FASTQC_RAW" "$R1" "$R2" >>"$SAMPLE_LOG" 2>&1
 
-    # fastp
+    # applies fastp with the specified parameters given by the user to the raw data
     CMD="fastp -i $R1 -I $R2 \
         -o ${TRIM_DIR}/${sample}_R1.trim.fastq.gz \
         -O ${TRIM_DIR}/${sample}_R2.trim.fastq.gz \
@@ -188,7 +196,7 @@ for R1 in "${VALID_R1[@]}"; do
 
     eval $CMD >>"$SAMPLE_LOG" 2>&1
 
-    # FastQC trimmed
+    #Applies fastqc to the trimmed files created by fastp
     fastqc -t "$THREADS" -o "$FASTQC_TRIM" \
         "${TRIM_DIR}/${sample}_R1.trim.fastq.gz" \
         "${TRIM_DIR}/${sample}_R2.trim.fastq.gz" >>"$SAMPLE_LOG" 2>&1
@@ -198,7 +206,16 @@ done
 
 echo
 echo "[6/6] Pipeline completed."
-echo "Run MultiQC manually:"
-echo "   multiqc . --outdir results/multiqc"
+echo "Running MultiQC..."
+
+# Run MultiQC and save results in results/multiqc
+multiqc . --outdir results/multiqc
+
+if [[ $? -eq 0 ]]; then
+    echo "MultiQC completed successfully."
+else
+    echo "MultiQC failed. Check for errors."
+fi
+
 echo
 echo "All tasks finished successfully."
