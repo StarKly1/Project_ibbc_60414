@@ -18,16 +18,27 @@ When running main.sh it will create the following folder structure around it:
 
 
 Project_ibbc_60414/
+
 ├── main.sh				← Script file for the entire pipeline
+
 ├── data/
+
 │   ├── raw/               ← input FASTQ files
+
 │   ├── trimmed/           ← fastp outputs
+
 ├── results/
+
 │   ├── fastqc_raw/        ← FastQC without trimming
+
 │   ├── fastqc_trimmed/    ← FastQC after trimming by fastp
+
 │   ├── multiqc/           ← Final MultiQC report
+
 ├── problematic_files		← Files considered problematic
+
 ├── logs/                  ← Logs created during the process
+
 
 
 
