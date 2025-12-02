@@ -16,6 +16,7 @@ conda activate tools_qc
 
 When running main.sh it will create the following folder structure around it:
 
+
 Project_ibbc_60414/
 ├── main.sh				← Script file for the entire pipeline
 ├── data/
@@ -27,6 +28,7 @@ Project_ibbc_60414/
 │   ├── multiqc/           ← Final MultiQC report
 ├── problematic_files		← Files considered problematic
 ├── logs/                  ← Logs created during the process
+
 
 
 It will then ask the user to place the raw FASTQ files in data/raw. For the first run it is necessary to answer no (n) and to close the script, place the files and rerun the script. Afterward it will run the check for problematic files logging and moving the appropriate files to /problematic_files. 
