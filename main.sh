@@ -83,10 +83,6 @@ done
 for key in "${!SAMPLES[@]}"; do
     IFS=',' read -r sample readtype <<< "$key"
 
-    #it only reads R1 samples to not re check files, otherwise when SAMPLES was for example sampleA.R1
-    #it would check R1 and R2 but then it would redo the checks when SAMPLES moved to sampleA.R2
-    [[ "$readtype" != "R1" ]] && continue
-
     R1="${SAMPLES[$sample,R1]:-}"
     R2="${SAMPLES[$sample,R2]:-}"
 
